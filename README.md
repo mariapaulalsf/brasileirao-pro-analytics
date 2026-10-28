@@ -78,8 +78,7 @@ Matriz de confusão (linhas = real, colunas = previsto):
 Pré-requisitos: Python 3.10+ e Git. **Não é necessário banco de dados**: a aplicação lê os CSVs da pasta `data/`.
 
 ```bash
-git clone https://github.com/mariapaulalsf/Brasileir-o-Predictor-AI-2026.git
-cd Brasileir-o-Predictor-AI-2026
+git clone https://github.com/mariapaulalsf/brasileirao-pro-analytics.git
 
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
