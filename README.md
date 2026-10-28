@@ -7,7 +7,7 @@
 
 Aplicação em Python que **prevê placares e probabilidades de resultado (vitória / empate / derrota) de partidas do Campeonato Brasileiro Série A** usando apenas informação disponível *antes* de cada jogo, e monta uma **classificação simulada** com essas previsões. A interface é um dashboard em Streamlit.
 
-> Projeto acadêmico (disciplina de Inteligência Artificial Aplicada a Dados) em evolução. A seção [Resultados e limitações](#-resultados-e-limitações) descreve com transparência o que o modelo entrega hoje e o que ainda não faz.
+> Projeto acadêmico em evolução. A seção [Resultados e limitações](#-resultados-e-limitações) descreve com transparência o que o modelo entrega hoje e o que ainda não faz.
 
 ---
 
@@ -78,8 +78,8 @@ Matriz de confusão (linhas = real, colunas = previsto):
 Pré-requisitos: Python 3.10+ e Git. **Não é necessário banco de dados**: a aplicação lê os CSVs da pasta `data/`.
 
 ```bash
-git clone https://github.com/mariapaulalsf/brasileirao-pro-analytics
-cd Brasileir-pro-Analytics
+git clone https://github.com/mariapaulalsf/Brasileir-o-Predictor-AI-2026.git
+cd Brasileir-o-Predictor-AI-2026
 
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
