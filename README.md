@@ -1,111 +1,108 @@
-# ⚽ Brasileirão Predictor AI 2026
+# ⚽ Brasileirão Pro Analytics
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![Streamlit](https://img.shields.io/badge/Streamlit-1.x-red)
-![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-Machine%20Learning-orange)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-blue)
+![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-red)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-Gradient%20Boosting-orange)
+![Pandas](https://img.shields.io/badge/Pandas-data-150458)
 
-Um sistema avançado de Ciência de Dados e Machine Learning desenvolvido para simular, prever e analisar os resultados das partidas do Campeonato Brasileiro Série A. O projeto utiliza estatísticas reais de elencos e jogadores para prever o desfecho do campeonato rodada a rodada.
+Aplicação em Python que **prevê placares e resultados (1X2) de partidas do Campeonato Brasileiro Série A** a partir de estatísticas coletivas dos elencos, e monta uma **classificação simulada** com essas previsões. A interface é um dashboard em Streamlit.
 
----
-
-## 🎯 Funcionalidades
-
-* **🔮 Simulação de Partidas:** Previsão de placares e tendências de resultado (Vitória/Empate/Derrota) baseada no histórico tático das equipes.
-* **📊 Análise Tática Pré-Jogo:** Comparativo direto entre os times exibindo métricas como Posse de Bola, Gols Pró, Desarmes Certos, Chutes Sofridos e Eficiência do Goleiro.
-* **🏆 Classificação Simulada:** Geração automática e dinâmica da tabela do Brasileirão, acumulando pontos com base nas previsões da Inteligência Artificial.
-* **📈 Validação de Acurácia:** Exibição em tempo real da assertividade do modelo, comparando as previsões com os jogos que já aconteceram na vida real.
+> Projeto acadêmico (disciplina de Inteligência Artificial Aplicada a Dados) em evolução. A seção [Resultados e limitações](#-resultados-e-limitações) descreve com transparência o que o modelo entrega hoje e o que ainda precisa melhorar.
 
 ---
 
-## 🧠 Arquitetura do Modelo de Machine Learning
+## O que o sistema faz
 
-Este projeto não se baseia apenas em médias de gols, mas sim no **comportamento tático e na eficiência coletiva dos elencos**.
+- **Previsão por rodada:** placar previsto, barra de probabilidade (mandante / empate / visitante) e, quando o jogo já aconteceu, o resultado real ao lado para comparação.
+- **Comparativo tático pré-jogo:** posse de bola, gols, desarmes certos, chutes no alvo sofridos e % de defesas do goleiro, lado a lado.
+- **Classificação simulada:** tabela construída acumulando os pontos das *previsões* do modelo até a rodada escolhida.
+- **Acurácia 1X2:** percentual de acerto do resultado (vitória/empate/derrota) nas partidas de 2026 já realizadas.
 
-1.  **Modelo:** `GradientBoostingRegressor` com `MultiOutputRegressor` (para prever gols do mandante e visitante simultaneamente).
-2.  **Engenharia de Features (Deltas):** A IA não avalia as equipes isoladamente. O modelo calcula a diferença matemática (Delta) entre as estatísticas do Mandante e do Visitante. Se o *Delta de Desarmes* é muito alto para o mandante, a IA entende a superioridade defensiva no confronto direto.
-3.  **Lógica de Empates (Thresholding):** O futebol é um esporte de placares baixos e alta taxa de empates. O modelo utiliza um limiar de confiança (`0.45`). Se a diferença de gols previstos entre as equipes for menor que esse limiar, a IA classifica o jogo como empate, aumentando drasticamente o realismo da tabela.
-
-### Dados Utilizados (Features)
-* `Poss`: Posse de bola média.
-* `Gls` / `Ast`: Força ofensiva (Gols e Assistências totais do elenco).
-* `Save%`: Eficiência do goleiro (% de defesas).
-* `SoTA`: Chutes no alvo sofridos.
-* `TklW`: Desarmes certos.
-* `CrdY`: Cartões amarelos.
-
----
-## Referências das tabelas
-https://www.kaggle.com/datasets/adaoduque/campeonato-brasileiro-de-futebol
-
-https://fbref.com/en/comps/24/Serie-A-Stats
-
-## Como Executar o Projeto Localmente
-1. Pré-requisitos
-- Python 3.10 ou superior.
-- PostgreSQL instalado e rodando localmente (banco brasileirao_ai configurado).
-- Git.
-
-2. Clonando o Repositório
-Bash
-git clone [https://github.com/SEU_USUARIO/Brasileiro-Predictor-AI.git](https://github.com/SEU_USUARIO/Brasileiro-Predictor-AI.git)
-cd Brasileiro-Predictor-AI
-3. Configurando o Ambiente Virtual
-Crie e ative um ambiente virtual para instalar as dependências isoladamente:
-
-   **No Mac/Linux:**
-
-   Bash
-
-   python3 -m venv .venv
-
-   source .venv/bin/activate
-
-   **No Windows:**
-
-      DOS
-
-      python -m venv .venv
-
-      .venv\Scripts\activate
-4. Instalando as Dependências
-   Bash
-
-   pip install -r requirements.txt
-
-   (Caso não tenha o arquivo requirements.txt, instale manualmente rodando: pip install streamlit pandas sqlalchemy psycopg2-binary scikit-learn numpy)
-
-5. Executando a Aplicação
-   Com o ambiente ativado, inicie o servidor do Streamlit:
-
-   Bash
-
-   streamlit run src/app.py
-
-   A aplicação abrirá automaticamente no seu navegador no endereço http://localhost:8501.
-
-## 🛠️ Tecnologias Utilizadas
-Front-end & Dashboard: Streamlit
-
-Manipulação de Dados: Pandas e NumPy
-
-Machine Learning: Scikit-Learn
-
-Banco de Dados: PostgreSQL via SQLAlchemy
-
-## 📁 Estrutura do Projeto
+## Como funciona
 
 ```text
-PROJETO_FUTEBOL/
-├── data/                                 # Diretório de dados brutos
-│   ├── partidas_2025.csv                 # Dados de treino (Temporada passada)
-│   ├── partidas_2026.csv                 # Dados de teste/simulação (Temporada atual)
-│   ├── estatisticas-padrao-do-elenco.csv # Dados táticos
-│   ├── estatisticas-diversas-do-elenco.csv
-│   └── goleiros-do-elenco.csv
-├── src/                                  # Código-fonte
-│   └── app.py                            # Aplicação principal Streamlit e pipeline de IA
-├── .venv/                                # Ambiente virtual Python
-├── .gitignore                            # Arquivos ignorados pelo Git
-├── requirements.txt                      # Dependências do projeto
-└── README.md                             # Documentação
+CSVs (data/)  →  limpeza e padronização de nomes  →  features por time
+      →  diferença (delta) mandante − visitante  →  Gradient Boosting (2 saídas)
+      →  gols previstos  →  placar, resultado 1X2 e tabela simulada (Streamlit)
+```
+
+1. **Dados:** partidas de 2025 (treino) e 2026 (teste/simulação) e estatísticas agregadas por elenco, lidas de arquivos CSV com Pandas. Nomes de clubes são padronizados (ex.: `Atlético Mineiro` → `Atlético-MG`).
+2. **Features:** para cada time, `Poss` (posse), `Gls` e `Ast` (gols e assistências), `Save%` e `SoTA` (defesas e chutes no alvo sofridos pelo goleiro), `TklW` (desarmes certos) e `CrdY` (cartões amarelos). O modelo recebe a **diferença (delta)** entre mandante e visitante de cada uma, ou seja, 7 features.
+3. **Modelo:** `GradientBoostingRegressor` dentro de um `MultiOutputRegressor`, prevendo ao mesmo tempo os gols do mandante e do visitante (`n_estimators=300`, `learning_rate=0.01`, `max_depth=3`, `subsample=0.8`, `random_state=42`).
+4. **Do gol previsto ao resultado:** se a diferença prevista (mandante − visitante) for maior que `0.35`, o resultado é vitória do mandante; menor que `-0.35`, vitória do visitante; no intervalo entre os dois, empate. A barra de probabilidade do dashboard é uma **representação visual derivada dessa diferença**, não uma probabilidade calibrada.
+
+## Resultados e limitações
+
+Números obtidos executando o pipeline atual com os dados deste repositório (treino: 380 jogos de 2025; teste: 177 jogos de 2026 já realizados). Reproduza com `python src/avaliar_modelo.py`.
+
+| Métrica (teste 2026) | Modelo | Baseline |
+|---|---|---|
+| Acurácia 1X2 (limiar 0,35) | **49,2%** | 49,2% (sempre prever vitória do mandante) |
+| Erro médio absoluto, gols do mandante | 0,90 | 0,91 (média do treino) |
+| Erro médio absoluto, gols do visitante | 0,76 | 0,70 (média do treino) |
+
+**Leitura honesta:** hoje o modelo **empata com a baseline mais simples** (sempre apostar no mandante). Ele prevê empates e vitórias do mandante, mas quase nunca vitórias do visitante (12 de 177 previsões). Os motivos conhecidos, que são também o roteiro de melhoria:
+
+- **Vazamento de informação (data leakage):** as estatísticas de elenco são acumulados da temporada 2026 (cerca de 18 jogos por time) e são usadas tanto para treinar com as partidas de 2025 quanto para prever as partidas de 2026 que compõem esses mesmos acumulados. A acurácia medida, portanto, não representa um uso real, em que só se conhece o que aconteceu *antes* do jogo.
+- **Features estáticas:** cada time tem um único conjunto de estatísticas para todas as rodadas. Não há forma recente, média móvel de gols nem mando de campo como feature.
+- **Avaliação simples:** não há validação temporal (treinar no passado, testar no futuro), métricas por classe nem matriz de confusão.
+- **Limiar de empate fixo (`0.35`)** escolhido manualmente, sem ajuste em validação.
+- **Dados parciais:** o arquivo de 2026 contém 177 jogos realizados; a temporada tem 380.
+
+## Roadmap
+
+- [ ] Reconstruir as features usando **somente informação anterior ao jogo** (médias móveis dos últimos N jogos, mando de campo) e avaliar com **split temporal**.
+- [ ] Comparar com baselines e com um classificador 1X2 (probabilidades reais, `log loss`, matriz de confusão).
+- [ ] Atualizar a base com os jogos já disputados e parametrizar a temporada para suportar **2027**.
+- [ ] Automatizar a coleta de dados, respeitando os termos de uso das fontes.
+- [ ] Modo "análise para comissão técnica": análise do adversário e simulação de escalação.
+- [ ] Publicar o modelo treinado no Hugging Face com *model card*.
+
+## Como executar
+
+Pré-requisitos: Python 3.10+ e Git. **Não é necessário banco de dados**: a aplicação lê os CSVs da pasta `data/`.
+
+```bash
+git clone https://github.com/mariapaulalsf/Brasileir-o-Predictor-AI-2026.git
+cd Brasileir-o-Predictor-AI-2026
+
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt
+streamlit run src/app.py         # abre em http://localhost:8501
+```
+
+Para recalcular as métricas da seção anterior: `python src/avaliar_modelo.py`.
+
+## Estrutura
+
+```text
+├── data/
+│   ├── partidas_2025.csv                    # jogos de 2025 (treino)
+│   ├── partidas_2026.csv                    # jogos de 2026 (teste/simulação)
+│   ├── estatisticas-padrao-do-elenco.csv    # posse, gols, assistências
+│   ├── goleiros-do-elenco.csv               # defesas e chutes sofridos
+│   ├── estatisticas-diversas-do-elenco.csv  # desarmes, cartões
+│   └── (demais CSVs de jogadores e histórico; ainda não usados pelo app)
+├── src/
+│   ├── app.py                               # dashboard Streamlit + pipeline de ML
+│   └── avaliar_modelo.py                    # reproduz as métricas deste README
+├── requirements.txt
+└── README.md
+```
+
+## Tecnologias
+
+Python · Streamlit · Pandas · NumPy · scikit-learn
+
+## Fontes dos dados
+
+- Estatísticas de elencos e partidas: [FBref – Série A](https://fbref.com/en/comps/24/Serie-A-Stats)
+- Histórico de partidas: [Kaggle – Campeonato Brasileiro de Futebol](https://www.kaggle.com/datasets/adaoduque/campeonato-brasileiro-de-futebol)
+
+Os dados pertencem às respectivas fontes; consulte os termos de uso antes de redistribuir ou coletar de forma automatizada.
+
+## Autora
+
+Maria Paula Lacerda · [LinkedIn](https://www.linkedin.com/in/maria-paula-lacerda-5306812b5) · [GitHub](https://github.com/mariapaulalsf)
