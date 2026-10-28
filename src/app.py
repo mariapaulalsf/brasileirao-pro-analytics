@@ -1,10 +1,14 @@
-import streamlit as st
-import pandas as pd
-from sqlalchemy import create_engine
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.multioutput import MultiOutputRegressor
 import os
+import sys
+
 import numpy as np
+import pandas as pd
+import streamlit as st
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from features import carregar_partidas, construir_features  # noqa: E402
+from modelo import ALVOS, gols_esperados, placar_mais_provavel, probabilidades_1x2, resultado_1x2, treinar  # noqa: E402
+from sklearn.metrics import log_loss  # noqa: E402
 
 # ==========================================
 # 1. CONFIGURAÇÕES E ESTILO
@@ -93,111 +97,54 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. INTEGRAÇÃO E ENGENHARIA DE DADOS
+# 2. DADOS E FEATURES (sem vazamento: ver src/features.py)
 # ==========================================
 @st.cache_data
 def carregar_dados():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if os.path.basename(base_dir) == 'src': base_dir = os.path.dirname(base_dir)
     data_dir = os.path.join(base_dir, 'data')
-
     try:
-        df_2025 = pd.read_csv(os.path.join(data_dir, 'partidas_2025.csv'))
-        df_2026 = pd.read_csv(os.path.join(data_dir, 'partidas_2026.csv'))
-        df_elenco = pd.read_csv(os.path.join(data_dir, 'estatisticas-padrao-do-elenco.csv'), header=1)
-        df_goleiros = pd.read_csv(os.path.join(data_dir, 'goleiros-do-elenco.csv'), header=1)
-        df_diversas = pd.read_csv(os.path.join(data_dir, 'estatisticas-diversas-do-elenco.csv'), header=1)
-    except Exception as e:
+        partidas = carregar_partidas(data_dir)
+    except Exception:
         st.error(f"Erro Crítico de I/O: Falha ao ler base de dados em {data_dir}.")
         st.stop()
+    return construir_features(partidas)
 
-    mapeamento = {
-        'Athletico–PR': 'Athletico-PR', 'Athletico PR': 'Athletico-PR',
-        'Atlético Mineiro': 'Atlético-MG', 'Atletico MG': 'Atlético-MG',
-        'RB Bragantino': 'Bragantino', 'Botafogo–RJ': 'Botafogo', 'Botafogo RJ': 'Botafogo',
-        'Vasco da Gama': 'Vasco', 'Sao Paulo': 'São Paulo'
-    }
-    for df in [df_2025, df_2026]:
-        df['Home'] = df['Home'].replace(mapeamento)
-        df['Away'] = df['Away'].replace(mapeamento)
-    for df in [df_elenco, df_goleiros, df_diversas]:
-        df['Squad'] = df['Squad'].replace(mapeamento)
-
-    for col in ['Poss', 'Gls', 'Ast']: df_elenco[col] = pd.to_numeric(df_elenco[col], errors='coerce').fillna(0)
-    for col in ['Save%', 'SoTA']: df_goleiros[col] = pd.to_numeric(df_goleiros[col], errors='coerce').fillna(50)
-    for col in ['TklW', 'CrdY']: df_diversas[col] = pd.to_numeric(df_diversas[col], errors='coerce').fillna(0)
-
-    df_taticas = df_elenco[['Squad', 'Poss', 'Gls', 'Ast']].merge(df_goleiros[['Squad', 'Save%', 'SoTA']], on='Squad', how='left')
-    df_taticas = df_taticas.merge(df_diversas[['Squad', 'TklW', 'CrdY']], on='Squad', how='left')
-
-    colunas_features = ['Poss', 'Gls', 'Ast', 'Save%', 'SoTA', 'TklW', 'CrdY']
-    media_geral = df_taticas[colunas_features].mean().to_dict()
-
-    def extrair_gols(df):
-        df_temp = df.copy()
-        gols = df_temp['Score'].astype(str).str.extract(r'(\d+)\D+(\d+)')
-        df_temp['gols_mandante'] = gols[0].astype(float)
-        df_temp['gols_visitante'] = gols[1].astype(float)
-        return df_temp
-
-    df_2025 = extrair_gols(df_2025).dropna(subset=['gols_mandante', 'gols_visitante'])
-    df_2026 = extrair_gols(df_2026)
-
-    def integrar_taticas_e_deltas(df_jogos):
-        df = df_jogos.merge(df_taticas, left_on='Home', right_on='Squad', how='left')
-        df.rename(columns={c: f"{c}_mandante" for c in colunas_features}, inplace=True)
-        df.drop('Squad', axis=1, inplace=True)
-
-        df = df.merge(df_taticas, left_on='Away', right_on='Squad', how='left')
-        df.rename(columns={c: f"{c}_visitante" for c in colunas_features}, inplace=True)
-        df.drop('Squad', axis=1, inplace=True)
-
-        for c in colunas_features:
-            df[f"{c}_mandante"] = df[f"{c}_mandante"].fillna(media_geral[c])
-            df[f"{c}_visitante"] = df[f"{c}_visitante"].fillna(media_geral[c])
-            df[f"Delta_{c}"] = df[f"{c}_mandante"] - df[f"{c}_visitante"]
-
-        return df
-
-    df_2025_full = integrar_taticas_e_deltas(df_2025)
-    df_2026_full = integrar_taticas_e_deltas(df_2026)
-    todos_times = sorted(list(set(df_2026_full['Home'].dropna().unique()) | set(df_2026_full['Away'].dropna().unique())))
-
-    return df_2025_full, df_2026_full, colunas_features, todos_times
-
-df_2025_full, df_2026_full, colunas_features, lista_times = carregar_dados()
 
 # ==========================================
-# 3. PIPELINE DE IA E ACURÁCIA
+# 3. MODELO (Poisson) E MÉTRICAS DE AVALIAÇÃO
 # ==========================================
-features_modelo = [f"Delta_{c}" for c in colunas_features]
-
 @st.cache_resource
-def treinar_modelo(df_treino, features):
-    X = df_treino[features]
-    y = df_treino[['gols_mandante', 'gols_visitante']]
-    modelo_base = GradientBoostingRegressor(n_estimators=300, learning_rate=0.01, max_depth=3, subsample=0.8, random_state=42)
-    modelo = MultiOutputRegressor(modelo_base)
-    modelo.fit(X, y)
-    return modelo
+def treinar_modelo(df_treino):
+    return treinar(df_treino)
 
-modelo_gb = treinar_modelo(df_2025_full, features_modelo)
 
-def calcular_acuracia_resultado(modelo, df_teste, features):
-    if len(df_teste) == 0: return 0.0
-    previsoes = modelo.predict(df_teste[features])
-    acertos = 0
-    total = len(df_teste)
-    for i in range(total):
-        real_m, real_v = df_teste.iloc[i]['gols_mandante'], df_teste.iloc[i]['gols_visitante']
-        diff_prev = previsoes[i][0] - previsoes[i][1]
-        real_res = 1 if real_m > real_v else (-1 if real_v > real_m else 0)
-        prev_res = 1 if diff_prev > 0.35 else (-1 if diff_prev < -0.35 else 0)
-        if real_res == prev_res: acertos += 1
-    return (acertos / total) * 100
+partidas_full = carregar_dados()
+df_treino = partidas_full[(partidas_full['temporada'] == 2025)].dropna(subset=ALVOS)
+modelo = treinar_modelo(df_treino)
 
-df_2026_realizados = df_2026_full.dropna(subset=['gols_mandante', 'gols_visitante'])
-acuracia = calcular_acuracia_resultado(modelo_gb, df_2026_realizados, features_modelo)
+df_2026_full = partidas_full[partidas_full['temporada'] == 2026].copy().reset_index(drop=True)
+lambdas = gols_esperados(modelo, df_2026_full)
+df_2026_full['lambda_m'], df_2026_full['lambda_v'] = lambdas[:, 0], lambdas[:, 1]
+_probs = np.array([probabilidades_1x2(a, b) for a, b in lambdas])
+df_2026_full['p_casa'], df_2026_full['p_empate'], df_2026_full['p_fora'] = _probs[:, 0], _probs[:, 1], _probs[:, 2]
+_placares = [placar_mais_provavel(a, b) for a, b in lambdas]
+df_2026_full['placar_m'] = [p[0] for p in _placares]
+df_2026_full['placar_v'] = [p[1] for p in _placares]
+df_2026_full['res_previsto'] = _probs.argmax(axis=1)  # 0 = mandante, 1 = empate, 2 = visitante
+
+lista_times = sorted(set(df_2026_full['Home'].dropna()) | set(df_2026_full['Away'].dropna()))
+
+df_2026_realizados = df_2026_full.dropna(subset=ALVOS)
+_real = resultado_1x2(df_2026_realizados['gols_mandante'], df_2026_realizados['gols_visitante'])
+_freq_treino = np.array([(resultado_1x2(df_treino['gols_mandante'], df_treino['gols_visitante']) == k).mean() for k in range(3)])
+if len(df_2026_realizados):
+    acuracia = (df_2026_realizados['res_previsto'].values == _real).mean() * 100
+    ll_modelo = log_loss(_real, df_2026_realizados[['p_casa', 'p_empate', 'p_fora']].values, labels=[0, 1, 2])
+    ll_baseline = log_loss(_real, np.tile(_freq_treino, (len(_real), 1)), labels=[0, 1, 2])
+else:
+    acuracia, ll_modelo, ll_baseline = 0.0, 0.0, 0.0
+
 
 # ==========================================
 # 4. CABEÇALHO E BARRA DE CONTROLES
@@ -205,11 +152,11 @@ acuracia = calcular_acuracia_resultado(modelo_gb, df_2026_realizados, features_m
 st.markdown("""
     <div class="cabecalho">
         <h1 class="titulo-principal">Brasileirão <span class="titulo-destaque">Pro Analytics</span></h1>
-        <p class="subtitulo">Previsão de Partidas com IA · Simulador Tático · Modelo: Gradient Boosting</p>
+        <p class="subtitulo">Previsão de Partidas com IA · Simulador Tático · Modelo: Regressão de Poisson</p>
     </div>
 """, unsafe_allow_html=True)
 
-col_controle, col_metrica, col_status = st.columns([1.5, 2, 1])
+col_controle, col_metrica, col_metrica2, col_status = st.columns([1.4, 1.3, 1.3, 1])
 
 with col_controle:
     rodadas_disponiveis = sorted(df_2026_full['Wk'].dropna().unique())
@@ -217,17 +164,26 @@ with col_controle:
 
 with col_metrica:
     st.metric(
-        label="Acurácia Global (1X2)",
+        label="Acurácia (1X2)",
         value=f"{acuracia:.1f}%",
-        delta=f"{len(df_2026_realizados)} partidas validadas"
+        delta=f"{len(df_2026_realizados)} partidas validadas",
+        delta_color="off"
+    )
+
+with col_metrica2:
+    st.metric(
+        label="Log loss (menor = melhor)",
+        value=f"{ll_modelo:.3f}",
+        delta=f"baseline {ll_baseline:.3f}",
+        delta_color="off"
     )
 
 with col_status:
     st.markdown(f"""
         <div class="status-sistema">
             SISTEMA <span class="status-online">● ONLINE</span><br>
-            MODELO · GBR v1.0<br>
-            DADOS · 2025–2026
+            MODELO · POISSON v2.0<br>
+            TREINO 2025 · TESTE 2026
         </div>
     """, unsafe_allow_html=True)
 
@@ -247,40 +203,20 @@ with aba_partidas:
     col1, col2 = st.columns(2)
 
     for index, jogo in df_rodada.iterrows():
-        X_pred = jogo[features_modelo].values.reshape(1, -1)
-        previsao = modelo_gb.predict(X_pred)[0]
-        diff_prev = previsao[0] - previsao[1]
-
-        if diff_prev > 0.35:
-            gols_m_ia, gols_v_ia = max(1, int(np.round(previsao[0]))), max(0, int(np.round(previsao[1])))
-        elif diff_prev < -0.35:
-            gols_m_ia, gols_v_ia = max(0, int(np.round(previsao[0]))), max(1, int(np.round(previsao[1])))
-        else:
-            gols_empate = max(0, int(np.round((previsao[0] + previsao[1]) / 2)))
-            gols_m_ia, gols_v_ia = gols_empate, gols_empate
-
-        # Calcula barras de probabilidade visual (baseado na diferença prevista)
-        forca_casa = max(0.05, min(0.90, 0.5 + diff_prev * 0.18))
-        forca_fora = max(0.05, min(0.90, 0.5 - diff_prev * 0.18))
-        forca_empate = max(0.05, 1.0 - forca_casa - forca_fora)
-        total_forca = forca_casa + forca_empate + forca_fora
-        pct_casa = (forca_casa / total_forca) * 100
-        pct_empate = (forca_empate / total_forca) * 100
-        pct_fora = (forca_fora / total_forca) * 100
+        gols_m_ia, gols_v_ia = int(jogo['placar_m']), int(jogo['placar_v'])
+        pct_casa, pct_empate, pct_fora = jogo['p_casa'] * 100, jogo['p_empate'] * 100, jogo['p_fora'] * 100
 
         resultado_real_html = ""
         if pd.notna(jogo['gols_mandante']) and pd.notna(jogo['gols_visitante']):
             gm_real = int(jogo['gols_mandante'])
             gv_real = int(jogo['gols_visitante'])
-            diff_real = gm_real - gv_real
-            prev_res = 1 if diff_prev > 0.35 else (-1 if diff_prev < -0.35 else 0)
-            real_res = 1 if diff_real > 0 else (-1 if diff_real < 0 else 0)
-            classe_resultado = "resultado-real-correto" if prev_res == real_res else "resultado-real"
+            real_res = int(resultado_1x2(gm_real, gv_real))
+            classe_resultado = "resultado-real-correto" if int(jogo['res_previsto']) == real_res else "resultado-real"
             resultado_real_html = f'<div class="{classe_resultado}">Resultado Real: {gm_real} – {gv_real}</div>'
 
         # Construção da String HTML de forma segura (sem recuos falsos do Markdown)
         html_card = '<div class="card-partida">'
-        html_card += f'<div class="card-topo"><span class="info-estadio">🏟 {jogo["Venue"]}</span><span class="badge-ia">IA · GBR</span></div>'
+        html_card += f'<div class="card-topo"><span class="info-estadio">🏟 {jogo["Venue"]}</span><span class="badge-ia">IA · POISSON</span></div>'
         html_card += '<div class="card-corpo">'
         html_card += '<div class="linha-times">'
         html_card += f'<div class="time-bloco time-casa"><span class="label-time">Mandante</span><span class="nome-time">{jogo["Home"]}</span></div>'
@@ -299,23 +235,23 @@ with aba_partidas:
         html_card += resultado_real_html
         html_card += '</div></div>'
 
-        # Dados Táticos para a tabela Expander
+        # Forma recente e força (features pré-jogo usadas pelo modelo)
         df_comparativo = pd.DataFrame({
-            'Indicador': ['Gols Pró (Poder de Fogo)', 'Posse de Bola', 'Desarmes (Eficiência Defensiva)', 'Chutes Sofridos no Alvo', 'Defesas do Goleiro (%)'],
-            jogo['Home']: [f"{jogo['Gls_mandante']:.0f}", f"{jogo['Poss_mandante']:.1f}%", f"{jogo['TklW_mandante']:.0f}", f"{jogo['SoTA_mandante']:.0f}", f"{jogo['Save%_mandante']:.1f}%"],
-            jogo['Away']: [f"{jogo['Gls_visitante']:.0f}", f"{jogo['Poss_visitante']:.1f}%", f"{jogo['TklW_visitante']:.0f}", f"{jogo['SoTA_visitante']:.0f}", f"{jogo['Save%_visitante']:.1f}%"]
+            'Indicador': ['Rating Elo (diferença, c/ mando)', 'Gols esperados pelo modelo', 'Saldo de forma: gols pró (últ. 5)', 'Saldo de forma: gols contra (últ. 5)', 'Saldo de forma: pontos/jogo (últ. 5)'],
+            jogo['Home']: [f"{jogo['elo_diff']:+.0f}", f"{jogo['lambda_m']:.2f}", f"{jogo['delta_gf']:+.2f}", f"{jogo['delta_ga']:+.2f}", f"{jogo['delta_ppg']:+.2f}"],
+            jogo['Away']: ["—", f"{jogo['lambda_v']:.2f}", "—", "—", "—"],
         })
 
         if index % 2 == 0:
             with col1:
                 st.markdown(html_card, unsafe_allow_html=True)
-                with st.expander("📊 Ver Dados Táticos"):
+                with st.expander("📊 Ver Indicadores do Modelo"):
                     st.dataframe(df_comparativo, hide_index=True, use_container_width=True)
                 st.markdown("<br>", unsafe_allow_html=True)
         else:
             with col2:
                 st.markdown(html_card, unsafe_allow_html=True)
-                with st.expander("📊 Ver Dados Táticos"):
+                with st.expander("📊 Ver Indicadores do Modelo"):
                     st.dataframe(df_comparativo, hide_index=True, use_container_width=True)
                 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -328,17 +264,7 @@ with aba_classificacao:
         mandante, visitante = row['Home'], row['Away']
         if pd.isna(mandante) or pd.isna(visitante): continue
 
-        X_pred = row[features_modelo].values.reshape(1, -1)
-        previsao = modelo_gb.predict(X_pred)[0]
-        diff_prev = previsao[0] - previsao[1]
-
-        if diff_prev > 0.35:
-            gols_m, gols_v = max(1, int(np.round(previsao[0]))), max(0, int(np.round(previsao[1])))
-        elif diff_prev < -0.35:
-            gols_m, gols_v = max(0, int(np.round(previsao[0]))), max(1, int(np.round(previsao[1])))
-        else:
-            gols_empate = max(0, int(np.round((previsao[0] + previsao[1]) / 2)))
-            gols_m, gols_v = gols_empate, gols_empate
+        gols_m, gols_v = int(row['placar_m']), int(row['placar_v'])
 
         if mandante in estatisticas_times and visitante in estatisticas_times:
             estatisticas_times[mandante]['J'] += 1; estatisticas_times[visitante]['J'] += 1
