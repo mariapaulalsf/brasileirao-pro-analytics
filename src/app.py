@@ -10,6 +10,10 @@ from features import carregar_partidas, construir_features  # noqa: E402
 from modelo import ALVOS, gols_esperados, placar_mais_provavel, probabilidades_1x2, resultado_1x2, treinar  # noqa: E402
 from sklearn.metrics import log_loss  # noqa: E402
 
+# --- CONFIGURAÇÃO DE TEMPORADAS ---
+ANO_TREINO = 2025
+ANO_TESTE = 2026
+
 # ==========================================
 # 1. CONFIGURAÇÕES E ESTILO
 # ==========================================
@@ -104,7 +108,7 @@ def carregar_dados():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(base_dir, 'data')
     try:
-        partidas = carregar_partidas(data_dir)
+        partidas = carregar_partidas(data_dir, temporadas=(ANO_TREINO, ANO_TESTE))
     except Exception:
         st.error(f"Erro Crítico de I/O: Falha ao ler base de dados em {data_dir}.")
         st.stop()
@@ -120,10 +124,10 @@ def treinar_modelo(df_treino):
 
 
 partidas_full = carregar_dados()
-df_treino = partidas_full[(partidas_full['temporada'] == 2025)].dropna(subset=ALVOS)
+df_treino = partidas_full[(partidas_full['temporada'] == ANO_TREINO)].dropna(subset=ALVOS)
 modelo = treinar_modelo(df_treino)
 
-df_2026_full = partidas_full[partidas_full['temporada'] == 2026].copy().reset_index(drop=True)
+df_2026_full = partidas_full[partidas_full['temporada'] == ANO_TESTE].copy().reset_index(drop=True)
 lambdas = gols_esperados(modelo, df_2026_full)
 df_2026_full['lambda_m'], df_2026_full['lambda_v'] = lambdas[:, 0], lambdas[:, 1]
 _probs = np.array([probabilidades_1x2(a, b) for a, b in lambdas])
@@ -183,7 +187,7 @@ with col_status:
         <div class="status-sistema">
             SISTEMA <span class="status-online">● ONLINE</span><br>
             MODELO · POISSON v2.0<br>
-            TREINO 2025 · TESTE 2026
+            TREINO {ANO_TREINO} · TESTE {ANO_TESTE}
         </div>
     """, unsafe_allow_html=True)
 

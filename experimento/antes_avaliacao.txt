@@ -1,0 +1,22 @@
+Treino: 380 jogos (2025) | Teste: 177 jogos (2026 já realizados)
+
+Escolha de alpha por validação cruzada temporal (log loss, menor é melhor):
+  alpha=0.1  log loss = 1.0150
+  alpha=0.3  log loss = 1.0102
+  alpha=1.0  log loss = 1.0126
+  alpha=3.0  log loss = 1.0195
+  alpha=10.0 log loss = 1.0313
+  -> alpha escolhido: 0.3
+
+RESULTADOS NO TESTE (2026)
+  Acurácia 1X2        modelo: 48.0%  | sempre mandante: 49.2%
+  Log loss 1X2        modelo: 1.0201 | frequências do treino: 1.0452
+  MAE gols mandante   modelo: 0.883 | média do treino: 0.908
+  MAE gols visitante  modelo: 0.739 | média do treino: 0.696
+  Previsões por classe: Mandante=163, Empate=0, Visitante=14
+
+  Matriz de confusão (linhas = real, colunas = previsto):
+           Mandante  Empate  Visitante
+Mandante         81       0          6
+Empate           43       0          4
+Visitante        39       0          4

@@ -1,0 +1,3 @@
+OK  test_resultado_do_jogo_nao_altera_suas_proprias_features
+OK  test_jogos_anteriores_nao_dependem_de_jogos_posteriores
+OK  test_sem_valores_ausentes_nas_features
